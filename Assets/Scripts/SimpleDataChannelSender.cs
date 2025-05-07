@@ -3,6 +3,8 @@ using System.Runtime.CompilerServices;
 using Unity.WebRTC;
 using UnityEngine;
 using NativeWebSocket;
+using System.Net.Sockets;
+using System.Net;
 
 public class SimpleDataChannelSender : MonoBehaviour 
 {
@@ -22,7 +24,18 @@ public class SimpleDataChannelSender : MonoBehaviour
 
     private void Start()
     {
-        InitClient("192.168.1.139", 8080);
+        string serverIpv4Address = "";
+        var host = Dns.GetHostEntry(Dns.GetHostName());
+        foreach (var ip in host.AddressList)
+        {
+            if (ip.AddressFamily == AddressFamily.InterNetwork)
+            {
+                serverIpv4Address = ip.ToString();
+                break;
+            }
+        }
+        InitClient(serverIpv4Address, 8080);
+        
     }
 
     private void OnDestroy()

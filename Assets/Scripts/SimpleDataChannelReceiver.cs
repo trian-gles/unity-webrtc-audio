@@ -21,18 +21,7 @@ public class SimpleDataChannelReceiver : MonoBehaviour
 
     private void Start()
     {
-        string serverIpv4Address = "";
-        var host = Dns.GetHostEntry(Dns.GetHostName());
-        foreach (var ip in host.AddressList)
-        {
-            if (ip.AddressFamily == AddressFamily.InterNetwork)
-            {
-                serverIpv4Address = ip.ToString();
-                break;
-            }
-        }
-        InitClient(serverIpv4Address, 8080);
-
+        InitClient("192.168.1.139", 8080);
     }
 
     private void Update()
