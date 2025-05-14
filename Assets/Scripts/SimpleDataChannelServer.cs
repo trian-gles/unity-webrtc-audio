@@ -11,6 +11,8 @@ public class SimpleDataChannelServer : MonoBehaviour
     private string serverIpv4Address;
     private int serverPort = 8080;
 
+    public Debugger debug;
+
     private void Awake()
     {
         var host = Dns.GetHostEntry(Dns.GetHostName());
@@ -25,9 +27,9 @@ public class SimpleDataChannelServer : MonoBehaviour
         
         ws = new WebSocketSharp.Server.WebSocketServer($"ws://{serverIpv4Address}:{serverPort}");
         ws.AddWebSocketService<SimpleDataChannelService>($"/{nameof(SimpleDataChannelService)}");
-        Debug.Log($"About to start server on ip {serverIpv4Address}");
+        debug.Log($"About to start server on ip {serverIpv4Address}");
         ws.Start();
-        Debug.Log($"Server started");
+        debug.Log($"Server started");
     }
 }
 

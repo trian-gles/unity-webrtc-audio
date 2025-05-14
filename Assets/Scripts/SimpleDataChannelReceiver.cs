@@ -7,6 +7,7 @@ using NativeWebSocket;
 using System.Threading.Tasks;
 using System.Net.Sockets;
 using System.Net;
+using Unity.Collections.LowLevel.Unsafe;
 
 public class SimpleDataChannelReceiver : MonoBehaviour
 {
@@ -19,9 +20,14 @@ public class SimpleDataChannelReceiver : MonoBehaviour
     private bool hasReceivedOffer = false;
     private SessionDescription receivedOfferSessionDescTemp;
 
+    public Debugger debug;
+
+    string IP = "192.168.1.138";
+    int port = 8080;
+
     private void Start()
     {
-        InitClient("192.168.1.139", 8080);
+        InitClient(IP, port);
     }
 
     private void Update()
@@ -43,9 +49,64 @@ public class SimpleDataChannelReceiver : MonoBehaviour
 
         ws = new WebSocket($"ws://{serverIp}:{port}/{nameof(SimpleDataChannelService)}");
 
-        ws.OnOpen += () =>
+        ws.OnOpen += async () =>
         {
-            Debug.Log("Headset connection open!");
+            debug.Log("Headset connection open!");
+            await ws.SendText("Hello from the headset!");
+
+
+            connection = new RTCPeerConnection();
+            connection.OnIceCandidate = candidate => {
+                var candidateInit = new CandidateInit()
+                {
+                    SdpMid = candidate.SdpMid,
+                    SdpMLineIndex = candidate.SdpMLineIndex ?? 0,
+                    Candidate = candidate.Candidate
+                };
+
+                ws.SendText("CANDIDATE!" + candidateInit.ConvertToJSON());
+            };
+
+            connection.OnIceConnectionChange = state =>
+            {
+                debug.Log(state.ToString());
+            };
+
+            connection.OnDataChannel = channel => {
+                dataChannel = channel;
+                dataChannel.OnMessage = bytes =>
+                {
+                    var message = System.Text.Encoding.UTF8.GetString(bytes);
+                    debug.Log("Message received: " + message);
+                };
+
+            };
+
+            
+
+            var receivedAudioSource = GetComponent<AudioSource>();
+            var receiveStream = new MediaStream();
+            receiveStream.OnAddTrack = e =>
+            {
+                if (e.Track is AudioStreamTrack track)
+                {
+                    receivedAudioSource.SetTrack(track);
+
+                    receivedAudioSource.loop = true;
+                    receivedAudioSource.Play();
+                }
+            };
+
+            connection.OnTrack = (RTCTrackEvent e) =>
+            {
+                debug.Log("Listener added track");
+                if (e.Track.Kind == TrackKind.Audio)
+                {
+                    receiveStream.AddTrack(e.Track);
+                }
+            };
+
+            await ws.SendText("READY!");
         };
 
         ws.OnMessage += (bytes) =>
@@ -57,12 +118,12 @@ public class SimpleDataChannelReceiver : MonoBehaviour
 
             switch (requestType) {
                 case "OFFER":
-                    Debug.Log(clientId + " - Got OFFER from Desktop: " + requestData); 
+                    debug.Log(clientId + " - Got OFFER from Desktop: " + requestData); 
                     receivedOfferSessionDescTemp = SessionDescription.FromJSON(requestData);
                     hasReceivedOffer = true;
                     break;
                 case "CANDIDATE":
-                    Debug.Log(clientId + " - Got CANDIDATE from Desktop: " + requestData);
+                    debug.Log(clientId + " - Got CANDIDATE from Desktop: " + requestData);
                     var candidateInit = CandidateInit.FromJSON(requestData);
                     RTCIceCandidateInit init = new RTCIceCandidateInit();
 
@@ -74,63 +135,23 @@ public class SimpleDataChannelReceiver : MonoBehaviour
                     connection.AddIceCandidate(candidate);
                     break;
                 default:
-                    Debug.Log(clientId + "Desktop says: " + e);
+                    debug.Log(clientId + "Desktop says: " + e);
                     break;
             }
         };
 
+        ws.OnError += (e) =>
+        {
+            debug.Log(e + " Reconnecting...");
+            InitClient(IP, port);
+        };
+
         
 
-        connection = new RTCPeerConnection();
-        connection.OnIceCandidate = candidate => {
-            var candidateInit = new CandidateInit()
-            {
-                SdpMid = candidate.SdpMid,
-                SdpMLineIndex = candidate.SdpMLineIndex ?? 0,
-                Candidate = candidate.Candidate
-            };
-
-            ws.SendText("CANDIDATE!" + candidateInit.ConvertToJSON());
-        };
-
-        connection.OnIceConnectionChange = state =>
-        {
-            Debug.Log(state);
-        };
-
-        connection.OnDataChannel = channel => {
-            dataChannel = channel;
-            dataChannel.OnMessage = bytes =>
-            {
-                var message = System.Text.Encoding.UTF8.GetString(bytes);
-                Debug.Log("Message received: " + message);
-            };
-
-        };
-
-        var receivedAudioSource = GetComponent<AudioSource>();
-        var receiveStream = new MediaStream();
-        receiveStream.OnAddTrack = e =>
-        {
-            if (e.Track is AudioStreamTrack track)
-            {
-                receivedAudioSource.SetTrack(track);
-
-                receivedAudioSource.loop = true;
-                receivedAudioSource.Play();
-            }
-        };
-
-        connection.OnTrack = (RTCTrackEvent e) =>
-        {
-            Debug.Log("Listener added track");
-            if (e.Track.Kind == TrackKind.Audio)
-            {
-                receiveStream.AddTrack(e.Track);
-            }
-        };
+        
 
         await ws.Connect();
+        
     }
 
     private IEnumerator CreateAnswer()

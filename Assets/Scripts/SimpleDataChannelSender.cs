@@ -22,6 +22,11 @@ public class SimpleDataChannelSender : MonoBehaviour
     private bool hasReceivedAnswer = false;
     private SessionDescription receivedAnswerSessionDescTemp;
 
+    public Debugger debug;
+
+    bool negotiationNeeded = false;
+    bool headsetConnected = false;
+
     private void Start()
     {
         string serverIpv4Address = "";
@@ -56,6 +61,11 @@ public class SimpleDataChannelSender : MonoBehaviour
             StartCoroutine(SetRemoteDesc());
 
         }
+        if (negotiationNeeded && headsetConnected)
+        {
+            negotiationNeeded = false;
+            StartCoroutine(CreateOffer());
+        }
         if (sendMessageViaChannel)
         {
             sendMessageViaChannel = !sendMessageViaChannel;
@@ -79,12 +89,12 @@ public class SimpleDataChannelSender : MonoBehaviour
             switch (requestType) 
             {
                 case "ANSWER":
-                    Debug.Log(clientId + " - Got ANSWER from Headset: " + requestData);
+                    debug.Log(clientId + " - Got ANSWER from Headset: " + requestData);
                     receivedAnswerSessionDescTemp = SessionDescription.FromJSON(requestData);
                     hasReceivedAnswer = true;
                     break;
                 case "CANDIDATE":
-                    Debug.Log(clientId + " - Got CANDIDATE from Headset: " + requestData);
+                    debug.Log(clientId + " - Got CANDIDATE from Headset: " + requestData);
 
                     var candidateInit = CandidateInit.FromJSON(requestData);
                     RTCIceCandidateInit init = new RTCIceCandidateInit();
@@ -95,12 +105,24 @@ public class SimpleDataChannelSender : MonoBehaviour
 
                     connection.AddIceCandidate(candidate);
                     break;
+
+                case "READY":
+                    headsetConnected = true;
+                    
+                    break;
                 default:
-                    Debug.Log(clientId + "Headset says: " + e);
+                    debug.Log(clientId + "Headset says: " + e);
                     break;
 
             }
         };
+
+        ws.OnOpen += async () =>
+        {
+            await ws.SendText("Hello from the desktop!");
+        };
+
+
 
         connection = new RTCPeerConnection();
         connection.OnIceCandidate = candidate =>
@@ -115,24 +137,25 @@ public class SimpleDataChannelSender : MonoBehaviour
         };
         connection.OnIceConnectionChange = state =>
         {
-            Debug.Log(state);
+            debug.Log(state.ToString());
         };
 
 
-        
+
 
         dataChannel = connection.CreateDataChannel("sendChannel");
         dataChannel.OnOpen = () =>
         {
-            Debug.Log("Sender opened channel");
+            debug.Log("Sender opened channel");
         };
         dataChannel.OnClose = () => {
-            Debug.Log("Sender closed channel");
+            debug.Log("Sender closed channel");
         };
 
         connection.OnNegotiationNeeded = () =>
         {
-            StartCoroutine(CreateOffer());
+            negotiationNeeded = true;
+            
         };
 
         var inputAudioSource = GetComponent<AudioSource>();
@@ -142,7 +165,13 @@ public class SimpleDataChannelSender : MonoBehaviour
 
 
         await ws.Connect();
+        
+    }
 
+    private void RTCInit()
+    {
+        
+        
     }
 
     private IEnumerator CreateOffer() { 
